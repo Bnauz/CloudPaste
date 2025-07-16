@@ -16,6 +16,7 @@ import * as mountService from "./services/mountService";
 import * as systemService from "./services/systemService";
 import * as urlUploadService from "./services/urlUploadService";
 import * as fsService from "./services/fsService";
+import * as previewService from "./services/previewService";
 
 // 统一服务导出 - 按功能模块重新组织
 export const api = {
@@ -27,6 +28,9 @@ export const api = {
 
   // 文件管理相关
   file: fileService,
+
+  // 文件预览相关
+  preview: previewService,
 
   // 存储配置相关
   storage: storageService,
@@ -81,13 +85,13 @@ export const api = {
     getSystemSettings: systemService.getSystemSettings,
     updateSystemSettings: systemService.updateSystemSettings,
     getDashboardStats: systemService.getDashboardStats,
+    getCacheStats: systemService.getCacheStats,
     clearCache: systemService.clearCacheAdmin,
 
     // 文件系统管理
     getDirectoryList: fsService.getAdminDirectoryList,
     getFileInfo: fsService.getAdminFileInfo,
     getFileDownloadUrl: fsService.getAdminFileDownloadUrl,
-    getFilePreviewUrl: fsService.getAdminFilePreviewUrl,
     getFileLink: fsService.getAdminFileLink,
     createDirectory: fsService.createAdminDirectory,
     uploadFile: fsService.uploadAdminFile,
@@ -172,7 +176,6 @@ export const api = {
       getDirectoryList: fsService.getUserDirectoryList,
       getFileInfo: fsService.getUserFileInfo,
       getFileDownloadUrl: fsService.getUserFileDownloadUrl,
-      getFilePreviewUrl: fsService.getUserFilePreviewUrl,
       getFileLink: fsService.getUserFileLink,
       createDirectory: fsService.createUserDirectory,
       uploadFile: fsService.uploadUserFile,
