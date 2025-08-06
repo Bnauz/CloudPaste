@@ -5,17 +5,17 @@
 
 import { ref, computed } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { api } from "../../api/index.js";
-import { useAuthStore } from "../../stores/authStore.js";
+import { api } from "@/api";
+import { useAuthStore } from "@/stores/authStore.js";
 
 export function useFilePreview() {
   const route = useRoute();
   const router = useRouter();
   const authStore = useAuthStore();
 
-  // API调用函数
+  // API调用函数 - 使用统一API
   const getFileInfo = computed(() => {
-    return authStore.isAdmin ? api.fs.getAdminFileInfo : api.fs.getUserFileInfo;
+    return api.fs.getFileInfo;
   });
 
   // 状态管理

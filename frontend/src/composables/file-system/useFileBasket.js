@@ -7,9 +7,9 @@ import { computed, onUnmounted } from "vue";
 import { useI18n } from "vue-i18n";
 import { storeToRefs } from "pinia";
 import { useFileBasketStore } from "../../stores/fileBasketStore.js";
-import { useAuthStore } from "../../stores/authStore.js";
+import { useAuthStore } from "@/stores/authStore.js";
 import { useTaskManager } from "../../utils/taskManager.js";
-import { api } from "../../api/index.js";
+import { api } from "@/api";
 
 export function useFileBasket() {
   const { t } = useI18n();
@@ -669,8 +669,8 @@ export function useFileBasket() {
         return file.download_url;
       }
 
-      // 根据用户类型选择API获取文件直链
-      const getFileLinkApi = authStore.isAdmin ? api.admin.getFileLink : api.user.fs.getFileLink;
+      // 使用统一API获取文件直链
+      const getFileLinkApi = api.fs.getFileLink;
       const response = await getFileLinkApi(file.path, null, true); // 强制下载
 
       if (response.success && response.data) {

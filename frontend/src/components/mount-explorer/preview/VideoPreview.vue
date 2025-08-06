@@ -34,6 +34,8 @@
 import { computed, ref, onMounted, onBeforeUnmount, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import VideoPlayer from "../../common/VideoPlayer.vue";
+import api from "@/api/index.js";
+import { FileType } from "@/utils/fileTypes.js";
 
 const { t } = useI18n();
 
@@ -84,6 +86,11 @@ const duration = ref(0);
 // 当前视频数据（响应式）
 const currentVideoData = ref(null);
 
+// HLS相关状态
+const isHLSVideo = ref(false);
+const hlsSegmentUrls = ref(new Map()); // 存储 .ts 文件名到预签名URL的映射
+const isLoadingHLSSegments = ref(false);
+
 // 为了兼容性，保留 videoData 计算属性
 const videoData = computed(() => currentVideoData.value);
 
@@ -100,6 +107,97 @@ const restoreOriginalTitle = () => {
   if (originalTitle.value) {
     document.title = originalTitle.value;
   }
+};
+
+// 检测是否为HLS视频文件
+const checkIfHLSVideo = (file) => {
+  if (!file || !file.name) return false;
+  return file.name.toLowerCase().endsWith(".m3u8");
+};
+
+// 获取同目录下的HLS分片文件
+const loadHLSSegments = async () => {
+  if (!props.currentPath || isLoadingHLSSegments.value) {
+    return;
+  }
+
+  try {
+    isLoadingHLSSegments.value = true;
+    let directoryItems = [];
+
+    // 优先使用传入的目录数据，避免重复API调用
+    if (props.directoryItems && props.directoryItems.length > 0) {
+      console.log("✅ 使用已有的目录数据，避免重复API调用");
+      directoryItems = props.directoryItems;
+    } else {
+      const response = await api.fs.getDirectoryList(props.currentPath);
+
+      if (response.success && response.data?.items) {
+        directoryItems = response.data.items;
+      } else {
+        console.error("❌ 获取目录列表失败");
+        return;
+      }
+    }
+
+    // 过滤出 HLS .ts 分片文件 - 使用FileType.VIDEO进行精确过滤
+    const tsFileList = directoryItems.filter((item) => {
+      if (item.isDirectory) return false;
+
+      // 首先检查是否为视频文件类型
+      if (item.type !== FileType.VIDEO) return false;
+
+      // 然后检查是否为 HLS .ts 分片文件
+      const fileName = item.name?.toLowerCase() || "";
+      return fileName.endsWith(".ts") || fileName.endsWith(".m2ts");
+    });
+    
+    console.log("🎬 过滤后的TS分片文件:", tsFileList);
+
+    if (tsFileList.length > 0) {
+      console.log(`🎬 找到 ${tsFileList.length} 个TS分片文件，开始生成预签名URL...`);
+      await generateTsPresignedUrls(tsFileList);
+    }
+  } catch (error) {
+    console.error("❌ 加载HLS分片文件失败:", error);
+  } finally {
+    isLoadingHLSSegments.value = false;
+  }
+};
+
+// 为TS分片文件生成预签名URL
+const generateTsPresignedUrls = async (tsFileList) => {
+  const urlMap = new Map();
+
+  for (const tsFile of tsFileList) {
+    console.log(`🎬 处理TS分片文件: ${tsFile.name}`);
+    try {
+      const presignedUrl = await generateS3PresignedUrl(tsFile);
+      if (presignedUrl) {
+        urlMap.set(tsFile.name, presignedUrl);
+      }
+    } catch (error) {
+      console.error(`❌ 生成TS分片文件预签名URL失败: ${tsFile.name}`, error);
+    }
+  }
+
+  hlsSegmentUrls.value = urlMap;
+};
+
+// 生成S3预签名URL
+const generateS3PresignedUrl = async (file) => {
+  try {
+    const getFileLink = api.fs.getFileLink;
+    // 使用S3配置的默认签名时间
+    const response = await getFileLink(file.path, null, false);
+
+    if (response?.success && response.data?.presignedUrl) {
+      return response.data.presignedUrl;
+    }
+  } catch (error) {
+    console.error(`获取文件预签名URL失败: ${file.name}`, error);
+  }
+  return null;
 };
 
 // 事件处理函数
@@ -141,19 +239,16 @@ const handleTimeUpdate = (data) => {
 
 // 处理视频播放结束
 const handleVideoEnded = () => {
-  console.log("视频播放结束");
   isPlaying.value = false;
   updatePageTitle(false, props.file?.name);
 };
 
 // 处理全屏事件
 const handleFullscreen = () => {
-  console.log("进入全屏模式");
   emit("fullscreen");
 };
 
 const handleFullscreenExit = () => {
-  console.log("退出全屏模式");
   emit("fullscreenExit");
 };
 
@@ -165,15 +260,18 @@ const handlePlayerReady = (player) => {
 // 初始化当前视频数据
 const initializeCurrentVideo = async () => {
   if (!props.file) {
-    console.log("❌ 无法初始化当前视频：文件信息为空");
     return;
   }
 
-  console.log("🎬 开始初始化当前视频:", props.file.name);
+  // 检测是否为HLS视频
+  isHLSVideo.value = checkIfHLSVideo(props.file);
+
+  if (isHLSVideo.value) {
+    await loadHLSSegments();
+  }
 
   // 使用S3预签名URL或传入的视频URL
   if (props.videoUrl) {
-    console.log("🎬 使用传入的视频URL:", props.videoUrl);
     currentVideoData.value = {
       name: props.file.name || "unknown",
       title: props.file.name || "unknown",
@@ -181,6 +279,8 @@ const initializeCurrentVideo = async () => {
       poster: generateDefaultPoster(props.file.name),
       contentType: props.file.contentType,
       originalFile: props.file,
+      isHLS: isHLSVideo.value,
+      hlsSegmentUrls: hlsSegmentUrls.value,
     };
     return;
   }
@@ -194,6 +294,8 @@ const initializeCurrentVideo = async () => {
     poster: generateDefaultPoster(props.file.name),
     contentType: props.file.contentType,
     originalFile: props.file,
+    isHLS: isHLSVideo.value,
+    hlsSegmentUrls: hlsSegmentUrls.value,
   };
 };
 
@@ -240,7 +342,6 @@ watch(
   async (newVideoUrl) => {
     // 当videoUrl存在且文件信息存在时，初始化视频数据
     if (newVideoUrl && props.file) {
-      console.log("🎬 检测到 videoUrl 变化，开始重新初始化当前视频:", newVideoUrl);
       await initializeCurrentVideo();
     }
   },
@@ -308,30 +409,5 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.video-preview-container {
-  width: 100%;
-}
-
-.video-preview {
-  min-height: 200px;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  position: relative;
-}
-
-.loading-indicator {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-}
-
-/* 移动端优化 */
-@media (max-width: 768px) {
-  .video-preview {
-    padding: 0.75rem !important;
-    min-height: 150px;
-  }
-}
+@import "@/styles/pages/mount-explorer/video-preview.css";
 </style>

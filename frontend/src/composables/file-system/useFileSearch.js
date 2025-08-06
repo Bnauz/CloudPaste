@@ -2,17 +2,17 @@
  * 文件搜索组合式函数
  */
 import { ref, computed, watch } from "vue";
-import { useAuthStore } from "../../stores/authStore.js";
-import { api } from "../../api/index.js";
+import { useAuthStore } from "@/stores/authStore.js";
+import { api } from "@/api";
 import { useI18n } from "vue-i18n";
 
 export function useFileSearch() {
   const authStore = useAuthStore();
   const { t } = useI18n();
 
-  // API调用函数
+  // API调用函数 - 使用统一API，自动根据认证信息处理用户类型
   const searchApi = computed(() => {
-    return authStore.isAdmin ? api.fs.searchAdminFiles : api.fs.searchUserFiles;
+    return api.fs.searchFiles;
   });
 
   // 状态管理

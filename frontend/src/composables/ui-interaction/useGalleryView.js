@@ -3,16 +3,12 @@
  * 提供图廊视图的完整功能逻辑，包括设置管理、数据处理、MasonryWall配置等
  */
 
-import { ref, computed, watch, nextTick } from "vue";
+import { ref, computed, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import { usePreviewTypes } from "@/composables/file-preview/usePreviewTypes";
-import { useAuthStore } from "@/stores/authStore";
 import api from "@/api";
 
 export function useGalleryView() {
   const { t } = useI18n();
-  const { isImage, isVideo } = usePreviewTypes();
-  const authStore = useAuthStore();
 
   // ===== localStorage设置管理 =====
 
@@ -103,11 +99,11 @@ export function useGalleryView() {
   const imageStates = ref(new Map()); // 每张图片的完整状态
   // 状态结构：{ status: 'idle' | 'loading' | 'loaded' | 'error', url: string | null }
 
-  // 智能分组函数
+  // 智能分组函数（直接使用后端type字段）
   const createImageGroups = (items) => {
     const allFolders = items.filter((item) => item.isDirectory);
-    const allImages = items.filter((item) => !item.isDirectory && isImage(item));
-    const allOtherFiles = items.filter((item) => !item.isDirectory && !isImage(item) && !isVideo(item));
+    const allImages = items.filter((item) => !item.isDirectory && item.type === 5); // IMAGE = 5
+    const allOtherFiles = items.filter((item) => !item.isDirectory && item.type !== 5 && item.type !== 2); // 非图片非视频
 
     return { allFolders, allImages, allOtherFiles };
   };
@@ -193,10 +189,8 @@ export function useGalleryView() {
     imageStates.value.set(imagePath, { status: "loading", url: null });
 
     try {
-      // 根据用户类型选择正确的API路径
-      const getFileInfo = authStore.isAdmin
-          ? api.admin.getFileInfo // 管理员：直接在admin下
-          : api.user.fs.getFileInfo; // 用户：在user.fs下
+      // 使用统一的API函数
+      const getFileInfo = api.fs.getFileInfo;
 
       // 获取文件信息，包含preview_url字段
       const response = await getFileInfo(imagePath);
